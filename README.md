@@ -17,11 +17,10 @@ Made for friend groups trying to beat the game (or every boss) on a hardcore ser
 - **Fast world reset.** `/run reset` counts down, kicks everyone, and the server comes back up on a brand new world. You can use a random seed, the same seed again, or a specific one. Datapacks are kept.
 - **Shared death (optional).** When the run fails, everyone dies.
 
-## Requirements
+## Requirements (server side install)
 
 - Fabric server for Minecraft **26.2 – 26.3.x**
 - [Fabric API](https://modrinth.com/mod/fabric-api)
-- Players need nothing installed.
 
 ## World reset: how it works
 
@@ -93,7 +92,7 @@ Times appear in the sidebar's right-hand column, and `-` means not reached yet. 
 
 ```
 HC Run #4  6:11
-ScoPeZs          ☠0 ❤12 ⚔5
+Tim          ☠0 ❤12 ⚔5
 Bob              ☠1 ❤30 ⚔2
 Dimensions
 Nether               12:31
