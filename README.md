@@ -148,6 +148,5 @@ Everything is stored in `runitback/data.json` next to your server jar, **outside
 ./gradlew runServer             # dev server in run/26.2, with the /hcrtest dev commands
 ```
 
-## License
-
-MIT
+# Disclosure
+This was slopped together with Opus 5.5 medium and reviewed by Sol 6.1 High. 🤙
