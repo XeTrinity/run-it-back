@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.runitback.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "DedicatedServerPropertiesMixin",
+    "PlayerAdvancementsMixin",
+    "ServerPlayerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "runitback-testmod",
+  "version": "1.0.0",
+  "name": "Run It Back dev test harness",
+  "environment": "server",
+  "entrypoints": {
+    "main": ["dev.runitback.server.TestHarness"]
+  },
+  "depends": {
+    "runitback": "*"
+  }
+}
