@@ -19,4 +19,6 @@ public final class PendingReset {
 	public int keepOldWorlds;
 	public List<String> preserve = new ArrayList<>();
 	public long requestedAt;
+	/** Destination recorded before the atomic world move, so an interrupted reset can resume. */
+	public String movedWorldDir;
 }

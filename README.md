@@ -52,6 +52,8 @@ A reset typically takes 10–20 seconds, most of it Java startup. The old world 
 
 If a reset ever fails (for example a permissions problem), the server refuses to start and explains why, instead of quietly booting the old world. Delete `runitback/pending-reset.json` to cancel a reset.
 
+Interrupted resets retain the staged files and resume restoration on the next boot. The world folder and `runitback/` must be on the same filesystem for the atomic world move; otherwise the reset fails with the old world intact.
+
 ## Commands
 
 | Command | Who | What it does |

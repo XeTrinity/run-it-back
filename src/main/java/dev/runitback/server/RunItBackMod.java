@@ -8,7 +8,6 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
-import net.minecraft.server.level.ServerPlayer;
 
 public final class RunItBackMod implements ModInitializer {
 	@Override
@@ -33,10 +32,6 @@ public final class RunItBackMod implements ModInitializer {
 		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
 			RunManager manager = RunManager.get();
 			if (manager != null) manager.entityDied(entity, source);
-		});
-		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamage, damageTaken, blocked) -> {
-			RunManager manager = RunManager.get();
-			if (manager != null && entity instanceof ServerPlayer player) manager.playerDamaged(player, damageTaken);
 		});
 		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.register((player, origin, destination) -> {
 			RunManager manager = RunManager.get();

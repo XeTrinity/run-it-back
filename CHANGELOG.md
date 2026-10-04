@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Preserve staged datapacks across failed reset retries and resume interrupted restoration.
+- Keep datapacks in archived worlds and fail safely when a world move crosses filesystems.
+- Record actual health lost after armor, enchantments and absorption, including lethal hits before the run ends.
+
 ## 1.0.0
 
 First release. Minecraft 26.2 – 26.3.x, Fabric, server-side only.

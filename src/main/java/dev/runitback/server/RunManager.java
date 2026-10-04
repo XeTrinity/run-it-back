@@ -268,7 +268,7 @@ public final class RunManager implements RunTracker.Listener {
 		tracker.dimensionEntered(player.getStringUUID(), player.getPlainTextName(), id, Dimension.label(id));
 	}
 
-	void playerDamaged(ServerPlayer player, float amount) {
+	public void playerDamaged(ServerPlayer player, float amount) {
 		tracker.playerDamaged(player.getStringUUID(), player.getPlainTextName(), amount);
 	}
 

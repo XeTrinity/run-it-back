@@ -30,6 +30,7 @@ public final class TestHarness implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		CommandRegistrationCallback.EVENT.register((dispatcher, ctx, selection) -> dispatcher.register(Commands.literal("hcrtest")
+			.then(Commands.literal("damagecheck").executes(c -> DamageChecks.run(c.getSource())))
 			.then(Commands.literal("join").then(Commands.argument("name", StringArgumentType.word())
 				.executes(c -> join(c.getSource(), StringArgumentType.getString(c, "name")))))
 			.then(Commands.literal("advance").then(Commands.argument("name", StringArgumentType.word())

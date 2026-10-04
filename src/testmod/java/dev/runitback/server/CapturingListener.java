@@ -31,6 +31,11 @@ final class CapturingListener extends ServerGamePacketListenerImpl {
 	}
 
 	@Override
+	public boolean hasClientLoaded() {
+		return true;
+	}
+
+	@Override
 	@SuppressWarnings("unchecked")
 	public void send(Packet<?> packet, ChannelFutureListener listener) {
 		ByteBuf buf = Unpooled.buffer();

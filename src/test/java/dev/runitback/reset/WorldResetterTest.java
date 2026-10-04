@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -82,6 +83,8 @@ class WorldResetterTest {
 			resetter.writeMarker(reset);
 			WorldResetter.Result result = resetter.runPending();
 			assertTrue(Files.exists(result.archivedTo().resolve("level.dat")));
+			assertEquals("{}", Files.readString(result.archivedTo().resolve("datapacks/pack/pack.mcmeta")),
+				"archived worlds retain their own datapacks");
 			Files.setLastModifiedTime(result.archivedTo(), java.nio.file.attribute.FileTime.fromMillis(run * 100_000L));
 		}
 		try (var entries = Files.list(server.resolve("runitback").resolve(WorldResetter.OLD_WORLDS_DIR))) {
@@ -115,5 +118,104 @@ class WorldResetterTest {
 		resetter.writeMarker(marker(server.resolve("world")));
 		assertNotNull(resetter.runPending());
 		assertFalse(Files.exists(resetter.markerFile()));
+	}
+
+	@Test
+	void retryKeepsDatapacksStagedByAnEarlierFailedReset() throws IOException {
+		Path world = makeWorld();
+		WorldResetter resetter = resetter();
+		resetter.writeMarker(marker(world));
+		Path staging = server.resolve("runitback/reset-staging");
+		Files.createDirectories(staging);
+		Files.move(world.resolve("datapacks"), staging.resolve("datapacks"));
+		Path obstruction = server.resolve("runitback/trash");
+		Files.writeString(obstruction, "blocks the world move");
+		assertThrows(IOException.class, resetter::runPending);
+		assertTrue(Files.exists(staging.resolve("datapacks/pack/pack.mcmeta")));
+		Files.delete(obstruction);
+
+		resetter.runPending();
+		assertEquals("{}", Files.readString(world.resolve("datapacks/pack/pack.mcmeta")));
+		assertFalse(Files.exists(resetter.markerFile()));
+	}
+
+	@Test
+	void interruptedRestoreResumesWithoutMovingTheWorldAgain() throws IOException {
+		Path world = makeWorld();
+		WorldResetter resetter = resetter();
+		PendingReset reset = marker(world);
+		reset.keepOldWorlds = 1;
+		Path archive = server.resolve("runitback/old-worlds/run-7");
+		reset.movedWorldDir = archive.toString();
+		resetter.writeMarker(reset);
+		Files.createDirectories(archive.getParent());
+		Files.move(world, archive);
+		Path staging = server.resolve("runitback/reset-staging");
+		Files.createDirectories(staging);
+		Files.move(archive.resolve("datapacks"), staging.resolve("datapacks"));
+		// A partially restored world has no level.dat. It must not trip the wrong-folder guard.
+		Files.createDirectories(world.resolve("datapacks/pack"));
+		Files.writeString(world.resolve("datapacks/pack/pack.mcmeta"), "partial copy");
+
+		WorldResetter.Result result = resetter.runPending();
+		assertEquals(archive, result.archivedTo());
+		assertEquals("{}", Files.readString(world.resolve("datapacks/pack/pack.mcmeta")));
+		assertTrue(Files.exists(archive.resolve("region/r.0.0.mca")));
+		assertFalse(Files.exists(world.resolve("level.dat")));
+		assertFalse(Files.exists(staging));
+		assertFalse(Files.exists(resetter.markerFile()));
+	}
+
+	@Test
+	void failedRestoreKeepsStagingAndMarkerForRetry() throws IOException {
+		Path world = makeWorld();
+		WorldResetter resetter = resetter();
+		PendingReset reset = marker(world);
+		reset.keepOldWorlds = 1;
+		Path archive = server.resolve("runitback/old-worlds/run-7");
+		reset.movedWorldDir = archive.toString();
+		resetter.writeMarker(reset);
+		Files.createDirectories(archive.getParent());
+		Files.move(world, archive);
+		Path staging = server.resolve("runitback/reset-staging");
+		Files.createDirectories(staging);
+		Files.move(archive.resolve("datapacks"), staging.resolve("datapacks"));
+		Files.createDirectory(world);
+		Files.writeString(world.resolve("datapacks"), "blocks restoration");
+
+		assertThrows(IOException.class, resetter::runPending);
+		assertTrue(Files.exists(staging.resolve("datapacks/pack/pack.mcmeta")));
+		assertTrue(Files.exists(resetter.markerFile()));
+		Files.delete(world.resolve("datapacks"));
+		resetter.runPending();
+		assertEquals("{}", Files.readString(world.resolve("datapacks/pack/pack.mcmeta")));
+	}
+
+	@Test
+	void crossFilesystemArchiveFailsWithoutDeletingWorld() throws IOException {
+		Path otherFilesystem = Path.of("/dev/shm");
+		assumeTrue(Files.isDirectory(otherFilesystem) && Files.isWritable(otherFilesystem));
+		assumeTrue(!Files.getFileStore(server).equals(Files.getFileStore(otherFilesystem)));
+		Path world = Files.createTempDirectory(otherFilesystem, "runitback-archive-test-");
+		try {
+			Files.writeString(world.resolve("level.dat"), "level");
+			Files.createDirectories(world.resolve("region"));
+			Files.writeString(world.resolve("region/r.0.0.mca"), "chunks");
+			Files.createDirectories(world.resolve("datapacks"));
+			Files.writeString(world.resolve("datapacks/pack.mcmeta"), "pack");
+			PendingReset reset = marker(world);
+			reset.keepOldWorlds = 1;
+			WorldResetter resetter = resetter();
+			resetter.writeMarker(reset);
+
+			assertThrows(IOException.class, resetter::runPending);
+			assertEquals("chunks", Files.readString(world.resolve("region/r.0.0.mca")));
+			assertEquals("pack", Files.readString(world.resolve("datapacks/pack.mcmeta")));
+			assertTrue(Files.exists(resetter.markerFile()));
+			assertThrows(IOException.class, resetter::runPending, "retry must also retain the world");
+			assertTrue(Files.exists(world.resolve("level.dat")));
+		} finally {
+			WorldResetter.deleteRecursively(world);
+		}
 	}
 }

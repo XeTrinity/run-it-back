@@ -2,13 +2,13 @@ package dev.runitback.reset;
 
 import dev.runitback.config.JsonFiles;
 import java.io.IOException;
-import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -58,48 +58,64 @@ public final class WorldResetter {
 		}
 
 		Path worldDir = Path.of(reset.worldDir).toAbsolutePath().normalize();
-		checkSafeToDelete(worldDir);
-
-		Path archivedTo = null;
-		if (Files.exists(worldDir)) {
-			Path staging = dataDir.resolve(STAGING_DIR);
-			deleteRecursively(staging);
+		Path target = reset.movedWorldDir == null ? null : Path.of(reset.movedWorldDir).toAbsolutePath().normalize();
+		Path destinationDir = dataDir.resolve(reset.keepOldWorlds > 0 ? OLD_WORLDS_DIR : TRASH_DIR);
+		if (target != null && !destinationDir.equals(target.getParent())) {
+			throw new IOException("Reset destination is outside " + destinationDir);
+		}
+		boolean worldMoved = target != null && Files.exists(target);
+		checkSafeToDelete(worldDir, worldMoved);
+		Path staging = dataDir.resolve(STAGING_DIR);
+		if (!worldMoved && Files.exists(worldDir)) {
+			Files.createDirectories(destinationDir);
+			if (target == null) {
+				target = unique(destinationDir.resolve(reset.keepOldWorlds > 0
+					? "run-" + reset.runNumber : worldDir.getFileName() + "-" + System.currentTimeMillis()));
+				reset.movedWorldDir = target.toString();
+				writeMarker(reset);
+			}
+			// Keep any staging left by an earlier attempt, including resets from older versions.
 			Files.createDirectories(staging);
-			List<String> preserved = new ArrayList<>();
 			for (String name : reset.preserve == null ? List.<String>of() : reset.preserve) {
+				if (name == null) continue;
 				Path entry = worldDir.resolve(name).normalize();
 				if (!entry.getParent().equals(worldDir) || !Files.exists(entry)) continue;
-				Files.move(entry, staging.resolve(entry.getFileName()));
-				preserved.add(entry.getFileName().toString());
+				copyRecursively(entry, staging.resolve(entry.getFileName()));
 			}
-
-			archivedTo = removeWorld(worldDir, reset);
-
+			// Atomic rename has no destructive cross-filesystem fallback or partially copied target.
+			// If it fails, the original world and staging remain intact for the next boot.
+			Files.move(worldDir, target, StandardCopyOption.ATOMIC_MOVE);
+			worldMoved = true;
+		}
+		if (Files.isDirectory(staging)) {
 			Files.createDirectories(worldDir);
-			for (String name : preserved) {
-				Files.move(staging.resolve(name), worldDir.resolve(name));
+			try (Stream<Path> entries = Files.list(staging)) {
+				for (Path entry : entries.toList()) {
+					copyRecursively(entry, worldDir.resolve(entry.getFileName()));
+				}
 			}
-			deleteRecursively(staging);
 		}
 
 		String seed = reset.seed == null || reset.seed.isBlank()
 			? Long.toString(ThreadLocalRandom.current().nextLong())
 			: reset.seed.trim();
+		// Restoration is complete; the recorded move lets a retry finish even if cleanup fails.
+		deleteRecursively(staging);
 		Files.delete(markerFile());
 		pruneOldWorlds(reset.keepOldWorlds);
 		emptyTrashInBackground();
-		return new Result(worldDir, seed, archivedTo);
+		return new Result(worldDir, seed, worldMoved && reset.keepOldWorlds > 0 ? target : null);
 	}
 
 	/** Refuses anything that does not look like a Minecraft world, to avoid deleting the wrong folder. */
-	private void checkSafeToDelete(Path worldDir) throws IOException {
+	private void checkSafeToDelete(Path worldDir, boolean worldMoved) throws IOException {
 		if (worldDir.getParent() == null) {
 			throw new IOException("Refusing to reset filesystem root " + worldDir);
 		}
 		if (dataDir.startsWith(worldDir)) {
 			throw new IOException("Refusing to reset " + worldDir + ": it contains the mod's data folder");
 		}
-		if (Files.exists(worldDir) && !Files.exists(worldDir.resolve("level.dat"))) {
+		if (!worldMoved && Files.exists(worldDir) && !Files.exists(worldDir.resolve("level.dat"))) {
 			try (Stream<Path> entries = Files.list(worldDir)) {
 				if (entries.findAny().isPresent()) {
 					throw new IOException("Refusing to reset " + worldDir + ": no level.dat, so it does not look like a world");
@@ -108,24 +124,21 @@ public final class WorldResetter {
 		}
 	}
 
-	/** Moves the world out of the way (fast), either into the archive or into the trash. */
-	private Path removeWorld(Path worldDir, PendingReset reset) throws IOException {
-		Path target;
-		if (reset.keepOldWorlds > 0) {
-			target = unique(dataDir.resolve(OLD_WORLDS_DIR).resolve("run-" + reset.runNumber));
-		} else {
-			target = unique(dataDir.resolve(TRASH_DIR).resolve(worldDir.getFileName() + "-" + System.currentTimeMillis()));
-		}
-		Files.createDirectories(target.getParent());
-		try {
-			Files.move(worldDir, target);
-		} catch (DirectoryNotEmptyException e) {
-			// Different filesystem: a directory move would need a copy. Delete in place instead.
-			log.warn("Could not move {} next to the mod data folder; deleting it in place", worldDir);
-			deleteRecursively(worldDir);
-			return null;
-		}
-		return reset.keepOldWorlds > 0 ? target : null;
+	private static void copyRecursively(Path source, Path target) throws IOException {
+		Files.walkFileTree(source, new SimpleFileVisitor<>() {
+			@Override
+			public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+				Files.createDirectories(target.resolve(source.relativize(dir)));
+				return FileVisitResult.CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+				Files.copy(file, target.resolve(source.relativize(file)), StandardCopyOption.REPLACE_EXISTING,
+					LinkOption.NOFOLLOW_LINKS);
+				return FileVisitResult.CONTINUE;
+			}
+		});
 	}
 
 	private static Path unique(Path path) {
